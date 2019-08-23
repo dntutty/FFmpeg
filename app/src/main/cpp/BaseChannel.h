@@ -16,14 +16,15 @@ extern "C" {
 #include "marco.h"
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
+
 /**
  * VideoChannel和AudioChannel的父类
  */
 class BaseChannel {
-public:
-    BaseChannel(int index, AVCodecContext *codecContext) {
-        this->index = index;
-        this->codecContext = codecContext;
+public:                                                                       //初始化列表
+    BaseChannel(int index, AVCodecContext *codecContext, AVRational timebase) : index(index),
+                                                                                codecContext(codecContext),
+                                                                                timebase(timebase) {
         LOGE("CHANNEL构造");
         this->packets.setReleaseFunc(releaseAvPacket);
         this->frames.setReleaseFunc(releaseAvFrame);
@@ -59,6 +60,8 @@ public:
     int index;
     bool is_playing = 0;
     AVCodecContext *codecContext;//todo 未释放
+    AVRational timebase;
+    double audio_time;
 
 };
 

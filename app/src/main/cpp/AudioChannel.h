@@ -10,7 +10,7 @@
 
 class AudioChannel : public BaseChannel {
 public:
-    AudioChannel(int index, AVCodecContext *avCodecContext);
+    AudioChannel(int index, AVCodecContext *avCodecContext,AVRational timebase);
 
     ~AudioChannel();
 
@@ -35,6 +35,7 @@ public:
     int out_buffers_size;
 
 private:
+    SwrContext *swr_ctx = 0;
     pthread_t pid_audio_decode;
     pthread_t pid_audio_play;
     //引擎

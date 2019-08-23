@@ -77,6 +77,7 @@ void *task_start(void *args) {
 void GHSFFmpeg::start() {
     is_playing = 1;
     if (videoChannel) {
+        videoChannel->setAudioChannel(audioChannel);
         videoChannel->start();
     }
     if(audioChannel) {
@@ -157,7 +158,7 @@ void GHSFFmpeg::_prepare() {
         if (codecParameters->codec_type == AVMEDIA_TYPE_AUDIO) {
             //音频
             LOGE("打开音频流");
-            audioChannel = new AudioChannel(i,codecContext);
+            audioChannel = new AudioChannel(i,codecContext,timebase);
         } else if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO) {
             //视频
             LOGE("打开视频流");
@@ -165,7 +166,7 @@ void GHSFFmpeg::_prepare() {
             //int fps = fram_rate.num / fram_rate.den;
             int fps = static_cast<int>(av_q2d(fram_rate));
 
-            videoChannel = new VideoChannel(i,codecContext,fps);
+            videoChannel = new VideoChannel(i,codecContext,fps,timebase);
             LOGE("打开视频流2");
 
             videoChannel->setRenderFunc(render_func);

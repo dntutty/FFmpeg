@@ -7,8 +7,9 @@
 
 #include "VideoChannel.h"
 
-VideoChannel::VideoChannel(int index, AVCodecContext *codecContext, int fps) : BaseChannel(index,
-                                                                                           codecContext) {
+VideoChannel::VideoChannel(int index, AVCodecContext *codecContext, int fps, AVRational timebase)
+        : BaseChannel(index,
+                      codecContext, timebase) {
     this->fps = fps;
 }
 
@@ -151,4 +152,8 @@ void VideoChannel::video_play() {
 
 void VideoChannel::setRenderFunc(RenderFunc render_func) {
     this->render_func = render_func;
+}
+
+void VideoChannel::setAudioChannel(AudioChannel *audioChannel) {
+    this->audioChannel = audioChannel;
 }

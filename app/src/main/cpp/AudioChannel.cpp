@@ -4,21 +4,29 @@
 
 #include "AudioChannel.h"
 
-AudioChannel::AudioChannel(int index, AVCodecContext *codecContext) : BaseChannel(index,
-
-                                                                                  codecContext) {
+AudioChannel::AudioChannel(int index, AVCodecContext *codecContext, AVRational timebase)
+        : BaseChannel(index,
+                      codecContext, timebase) {
     //缓冲区大小如何定？
-    out_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_STEREO);
-    out_sample_size = av_get_bytes_per_sample(AV_SAMPLE_FMT_S16);
-    out_sample_rate = 44100;
+    out_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_STEREO);//双通道
+    out_sample_size = av_get_bytes_per_sample(AV_SAMPLE_FMT_S16);//每一份样本的字节数
+    out_sample_rate = 44100;//采样率
     //2(通道数） * 2(16bit = 2 字节）* 44100（采样率）
     out_buffers_size = out_channels * out_sample_size * out_sample_rate;
     out_buffers = static_cast<uint8_t *>(malloc(out_buffers_size));
     memset(out_buffers, 0, out_buffers_size);
+    swr_ctx = swr_alloc_set_opts(0, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
+                                 out_sample_rate, codecContext->channel_layout,
+                                 codecContext->sample_fmt, codecContext->sample_rate, 0,
+                                 0);
 }
 
 AudioChannel::~AudioChannel() {
-
+    if (swr_ctx) {
+        swr_free(&swr_ctx);
+        swr_ctx = 0;
+    }
+    DELETE(out_buffers);
 }
 
 void *task_audio_decode(void *args) {
@@ -91,7 +99,7 @@ void AudioChannel::audio_decode() {
 void bqPlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *context) {
     AudioChannel *audioChannel = static_cast<AudioChannel *>(context);
     int pcm_size = audioChannel->getPCM();
-    (*bq)->Enqueue(bq, nextBuffer, pcm_size);
+    (*bq)->Enqueue(bq, audioChannel->out_buffers, pcm_size);
 }
 
 void AudioChannel::audio_play() {
@@ -205,11 +213,13 @@ void AudioChannel::audio_play() {
  * @return 数据大小
  */
 int AudioChannel::getPCM() {
+    int pcm_data_size = 0;
     AVFrame *frame = 0;
-    SwrContext *swr_ctx = swr_alloc_set_opts(0, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
-                                             out_sample_rate, codecContext->channel_layout,
-                                             codecContext->sample_fmt, codecContext->sample_rate, 0,
-                                             0);
+//    内存泄漏
+//    SwrContext *swr_ctx = swr_alloc_set_opts(0, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
+//                                             out_sample_rate, codecContext->channel_layout,
+//                                             codecContext->sample_fmt, codecContext->sample_rate, 0,
+//                                             0);
     //初始化重采样的上下文
     swr_init(swr_ctx);
     while (is_playing) {
@@ -225,13 +235,36 @@ int AudioChannel::getPCM() {
         //pcm 数据在frame中
         //这里获得的解码后pcm的音频原始数据，有可能与创建的播放器中设置的pcm格式不一样
         //重采样？example
-        swr_convert(swr_ctx, &out_buffers, out_buffers_size,
-                    const_cast<const uint8_t **>(frame->data), frame->nb_samples);
 
+        //假设输入10个数据，有可能这次转换只转换了8个，还剩2个数据（delay)
+        //端点查看：1024 * 48000
 
+        //下一个输入数据与下下一个输入数据之间的时间间隔
+        int64_t delay = swr_get_delay(swr_ctx, frame->sample_rate);
+
+        //输出的最大样本数  AV_ROUND_UP:向上取整
+        int64_t out_max_samples = av_rescale_rnd(frame->nb_samples + delay, frame->sample_rate,
+
+                                                 out_sample_rate, AV_ROUND_UP);
+        //上下文
+        //输出缓冲区
+        //输出缓冲区能容纳的最大数据量
+        //输入数据
+        //输入数据量
+        int output_num_per_channel = swr_convert(swr_ctx, &out_buffers, out_max_samples,
+                                                 const_cast<const uint8_t **>(frame->data),
+                                                 frame->nb_samples);
+        //获取转换后swr_convert转换后sample的个数 * 2 (16位）* 2 (双通道）
+        pcm_data_size = output_num_per_channel * out_sample_size * out_channels;
+//        frame->best_effort_timestamp  最佳效果的时间戳 * 时间单位
+
+        //获取音频时间 audio_time需要videochannel获取
+        audio_time = frame->best_effort_timestamp * av_q2d(timebase);
+
+        break;
     }//end while
-
-    return 0;
+    releaseAvFrame(&frame);
+    return pcm_data_size;
 }
 
 

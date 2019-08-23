@@ -7,12 +7,13 @@
 
 
 #include "BaseChannel.h"
+#include "AudioChannel.h"
 
 class VideoChannel : public BaseChannel {
     typedef void (*RenderFunc) (uint8_t *,int,int,int);
 
 public:
-    VideoChannel(int index,AVCodecContext *avCodecContext,int fps);
+    VideoChannel(int index,AVCodecContext *avCodecContext,int fps,AVRational timebase);
 
     ~VideoChannel();
 
@@ -26,11 +27,14 @@ public:
 
     void setRenderFunc(RenderFunc func);
 
+    void setAudioChannel(AudioChannel *audioChannel);
+
 private:
     pthread_t pid_video_decode;
     pthread_t pid_video_play;
     RenderFunc render_func;
     int fps;
+    AudioChannel *audioChannel = 0;
 };
 
 
