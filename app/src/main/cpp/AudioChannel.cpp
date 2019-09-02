@@ -52,9 +52,6 @@ void AudioChannel::start() {
     pthread_create(&pid_audio_play, NULL, task_audio_play, this);
 }
 
-void AudioChannel::stop() {
-
-}
 
 void AudioChannel::audio_decode() {
     AVPacket *packet = 0;
@@ -265,6 +262,44 @@ int AudioChannel::getPCM() {
     }//end while
     releaseAvFrame(&frame);
     return pcm_data_size;
+}
+
+/**
+ * 停止音频播放，释放资源
+ */
+void AudioChannel::stop() {
+    is_playing = 0;
+//    设置队列状态为工作状态
+    packets.setWork(0);
+    frames.setWork(0);
+
+
+    /**
+     * 7.释放
+     */
+//     7.1 设置播放器状态为停止状态
+    if (bqPlayerPlay) {
+        (*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
+
+    }
+//    7.2 销毁播放器
+    if (bqPlayerObject) {
+        (*bqPlayerObject)->Destroy(bqPlayerObject);
+        bqPlayerObject = 0;
+        bqPlayerBufferQueue = 0;
+    }
+//    7.3 销毁混音器
+    if (outputMixObject) {
+        (*outputMixObject)->Destroy(outputMixObject);
+        outputMixObject = 0;
+    }
+
+//    7.4 销毁引擎
+    if (engineObject) {
+        (*engineObject)->Destroy(engineObject);
+        engineObject = 0;
+        engineInterface = 0;
+    }
 }
 
 

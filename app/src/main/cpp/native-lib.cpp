@@ -97,3 +97,24 @@ Java_com_dntutty_ffmpeg_GHSPlayer_setSurfaceNative(JNIEnv *env, jobject instance
     window = ANativeWindow_fromSurface(env, surface);
     pthread_mutex_unlock(&mutex);
 }
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_dntutty_ffmpeg_GHSPlayer_releaseNative(JNIEnv *env, jobject instance) {
+    pthread_mutex_lock(&mutex);
+    if (window) {
+//        把老的释放
+        ANativeWindow_release(window);
+        window = 0;
+    }
+    pthread_mutex_unlock(&mutex);
+    DELETE(ghsfFmpeg);
+
+}extern "C"
+JNIEXPORT void JNICALL
+Java_com_dntutty_ffmpeg_GHSPlayer_stopNative(JNIEnv *env, jobject instance) {
+    if(ghsfFmpeg) {
+        ghsfFmpeg->stop();
+    }
+}

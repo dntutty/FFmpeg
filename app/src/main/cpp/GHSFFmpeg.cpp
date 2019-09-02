@@ -80,10 +80,28 @@ void GHSFFmpeg::start() {
         videoChannel->setAudioChannel(audioChannel);
         videoChannel->start();
     }
-    if(audioChannel) {
+    if (audioChannel) {
         audioChannel->start();
     }
     pthread_create(&pid_start, 0, task_start, this);
+}
+
+//设置为友元函数
+void *task_stop(void *args) {
+    GHSFFmpeg *ghsfFmpeg = static_cast<GHSFFmpeg *>(args);
+    ghsfFmpeg->is_playing = 0;
+    //    pthread_join,这里调用了后会阻塞主线程，可能会引发ANR
+    pthread_join(ghsfFmpeg->pid_prepare, 0);//等线程执行完再执行
+
+    if (ghsfFmpeg->formatContext) {
+        avformat_close_input(&ghsfFmpeg->formatContext);
+        avformat_free_context(ghsfFmpeg->formatContext);
+        ghsfFmpeg->formatContext = 0;
+    }
+    DELETE(ghsfFmpeg->videoChannel);
+    DELETE(ghsfFmpeg->audioChannel);
+    DELETE(ghsfFmpeg);
+    return 0;//一定要返回0！！！
 }
 
 
@@ -153,12 +171,12 @@ void GHSFFmpeg::_prepare() {
             return;
         }
         LOGE("打开解码器成功");
-
+        AVRational timebase = stream->time_base;
         //判断流类型（音频还是视频？）
         if (codecParameters->codec_type == AVMEDIA_TYPE_AUDIO) {
             //音频
             LOGE("打开音频流");
-            audioChannel = new AudioChannel(i,codecContext,timebase);
+            audioChannel = new AudioChannel(i, codecContext, timebase);
         } else if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO) {
             //视频
             LOGE("打开视频流");
@@ -166,7 +184,7 @@ void GHSFFmpeg::_prepare() {
             //int fps = fram_rate.num / fram_rate.den;
             int fps = static_cast<int>(av_q2d(fram_rate));
 
-            videoChannel = new VideoChannel(i,codecContext,fps,timebase);
+            videoChannel = new VideoChannel(i, codecContext, fps, timebase);
             LOGE("打开视频流2");
 
             videoChannel->setRenderFunc(render_func);
@@ -184,7 +202,9 @@ void GHSFFmpeg::_prepare() {
 
     //准备好了,反射通知java
     LOGE("准备完毕");
-    javaCallHelper->onPrePared(THREAD_CHILD);
+    if (javaCallHelper) {
+        javaCallHelper->onPrePared(THREAD_CHILD);
+    }
 }
 
 /**
@@ -192,8 +212,17 @@ void GHSFFmpeg::_prepare() {
  */
 void GHSFFmpeg::_start() {
     while (is_playing) {
-        if(videoChannel&&videoChannel->packets.size()>100) {
-            av_usleep(10 *1000);
+        /**
+         * 内存泄露点1
+         * 控制 视频packets队列
+         */
+        if (videoChannel && videoChannel->packets.size() > 100) {
+            av_usleep(10 * 1000);
+            continue;
+        }
+//        内存泄漏点1（控制音频packets队列）
+        if (audioChannel && audioChannel->packets.size() > 100) {
+            av_usleep(10 * 1000);
             continue;
         }
         AVPacket *packet = av_packet_alloc();
@@ -212,12 +241,19 @@ void GHSFFmpeg::_start() {
             //表示读完了
             //要考虑读完了，是否播放完了的情况
             LOGE("读取音频视频数据结束");
-            break;
-            //todo
+            if (videoChannel->packets.is_empty() && videoChannel->frames.is_empty() &&
+                audioChannel->packets.is_empty() && audioChannel->frames.is_empty()) {
+//                播放完了
+                av_packet_free(&packet);
+                break;
+            }
         } else {
             //todo 作业
             LOGE("读取音频视频数据包失败");
-            javaCallHelper->onError(THREAD_CHILD, FFMPEG_READ_PACKETS_FAIL);
+            if (javaCallHelper) {
+                javaCallHelper->onError(THREAD_CHILD, FFMPEG_READ_PACKETS_FAIL);
+            }
+            av_packet_free(&packet);
             break;
         }
     }//end while
@@ -231,5 +267,31 @@ void GHSFFmpeg::_start() {
 
 void GHSFFmpeg::setRenderFunc(GHSFFmpeg::RenderFunc render_func) {
     this->render_func = render_func;
+}
+
+/**
+ * 停止播放
+ */
+void GHSFFmpeg::stop() {
+    is_playing = 0;
+    javaCallHelper = 0;//prepare阻塞中停止了，还是回调给”java准备好了“
+//    在主线程中，要保证——prepare方法(子线程中)执行完再释放(主线程)
+//    pthread_join,这里调用了后会阻塞主线程，可能会引发ANR
+    pthread_join(pid_prepare, 0);//等线程执行完再执行
+
+//    既然在主线程会引发ANR，那么我们到子线程中去释放
+    pthread_create(&pid_stop, 0, task_stop, this);//创建stop子线程
+//    if(formatContext) {
+//        avformat_close_input(&formatContext);
+//        avformat_free_context(formatContext);
+//        formatContext = 0;
+//    }
+//    if (videoChannel) {
+//        videoChannel->stop();
+//    }
+//    if (audioChannel) {
+//        audioChannel->stop();
+//    }
+
 }
 

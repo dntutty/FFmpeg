@@ -19,6 +19,7 @@ extern "C" {
 
 class GHSFFmpeg {
     typedef void (*RenderFunc) (uint8_t *,int,int,int);
+    friend void *task_stop(void *args);
 public:
     GHSFFmpeg(JavaCallHelper *javaCallHelper,char* dataSource);
 
@@ -35,6 +36,8 @@ public:
 
     void setRenderFunc(RenderFunc render_func);
 
+    void stop();
+
 private:
     JavaCallHelper *javaCallHelper = 0;
     AudioChannel *audioChannel = 0;
@@ -42,6 +45,7 @@ private:
     char *dataSource;
     pthread_t pid_prepare;
     pthread_t pid_start;
+    pthread_t pid_stop;
     bool is_playing;
     AVFormatContext *formatContext = 0;
     RenderFunc render_func;

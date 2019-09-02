@@ -105,6 +105,19 @@ public class GHSPlayer implements SurfaceHolder.Callback{
 
     }
 
+    public void release() {
+        holder.removeCallback(this);
+        releaseNative();
+    }
+
+    private native void releaseNative();
+
+    public void stop() {
+        stopNative();
+    }
+
+    private native void stopNative();
+
     interface JavaCallHelper {
         void onPrepared();
 

@@ -16,6 +16,8 @@ template<typename T>
 class SafeQueue {
     typedef void (*release_func)(T *);
 
+    typedef void (*sync_func)(queue<T> &);
+
 public:
     SafeQueue() {
         pthread_mutex_init(&mutex, NULL);//动态初始化的方式
@@ -59,7 +61,7 @@ public:
             //工作状态，说明确实需要数据（pop),但是队列为空，需要等待
             pthread_cond_wait(&cond, &mutex);
         }
-        if(!q.empty()) {
+        if (!q.empty()) {
             t = q.front();
             q.pop();
             ret = 1;
@@ -129,12 +131,26 @@ public:
         this->func = func;
     }
 
+    void setSyncFunc(sync_func sync_handle) {
+        this->sync_handle = sync_handle;
+    }
+
+    /**
+     * 同步操作
+     */
+    void sync() {
+        pthread_mutex_lock(&mutex);
+        sync_handle(q);
+        pthread_mutex_unlock(&mutex);
+    }
+
 private:
     queue<T> q;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     int work = 0;//标记队列是否工作
     release_func func;
+    sync_func sync_handle;
 };
 
 
